@@ -1,6 +1,8 @@
 #pragma once
 
-#include <SDL.h>
+extern "C"{
+    #include <SDL.h>
+}
 
 class AudioPlay
 {

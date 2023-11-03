@@ -3,7 +3,7 @@
 #include <map>
 #include <functional>
 
-#ifndef _cplusplus
+#ifdef _cplusplus
 extern "C" {
     #include <SDL.h>
 }

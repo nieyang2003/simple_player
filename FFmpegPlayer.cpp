@@ -1,5 +1,88 @@
 #include "FFmpegPlayer.h"
 
+#include "DemuxThread.h"
+#include "VideoDecodeThread.h"
+#include "AudioDecodeThread.h"
+#include "AudioPlay.h"
+#include "log.h"
+#include "SDLApp.h"
+
+#include <functional>
+
+/**
+ * @brief 计算音频时钟
+ * 
+ * @param player_ctx 播放器上下文
+ * @return 返回音频时钟的值 
+ */
+static double get_audio_clock(FFmpegPlayerCtx *player_ctx)
+{
+    double pts; // 音频时钟值
+    int hw_buf_size, bytes_per_sec, n;
+
+    pts = player_ctx->audio_clock;  // 初始化音频时钟为当前值
+    hw_buf_size = player_ctx->audio_buf_size - player_ctx->audio_buf_index; // 计算剩余缓存区大小
+    bytes_per_sec = 0;
+    n = player_ctx->aCodecCtx->ch_layout.nb_channels * 2;   // 通道布局通道数*2，计算样本数据字节数
+
+    if (player_ctx->audio_st) {
+        bytes_per_sec = player_ctx->aCodecCtx->sample_rate * n; // 每秒字节数
+    }
+
+    if (bytes_per_sec) {
+        pts -= (double)(hw_buf_size / bytes_per_sec);   // 调整时钟值
+    }
+
+    return pts;
+}
+
+/**
+ * @brief SDL定时器回调刷新函数
+ * 
+ * @param interval 定时器触发间隔(未使用)
+ * @param opaque 不透明数据指针
+ * @return Uint32 如果返回0，表示定时器的周期性触发将被取消
+ */
+static Uint32 sdl_refresh_timer_cb(Uint32 interval, void *opaque)
+{
+    SDL_Event event;
+    event.type = FF_REFRESH_EVENT;
+    event.user.data1 = opaque;
+    SDL_PushEvent(&event);  // 将事件推送到SDL事件队列中
+
+    return 0;
+}
+
+/**
+ * @brief 添加播放器刷新事件定时器
+ *
+ * @param is FFmpegPlayerCtx 播放器上下文
+ * @param delay 定时器触发的延迟时间（以毫秒为单位）
+ */
+static void schedule_refresh(FFmpegPlayerCtx *player_ctx, int delay)
+{
+    SDL_AddTimer(delay, sdl_refresh_timer_cb, player_ctx);
+}
+
+/**
+ * @brief 显示视频
+ * 
+ * @param player_ctx 播放器上下文
+ */
+static void video_display(FFmpegPlayerCtx *player_ctx)
+{   
+    // 获取当前视频帧
+    VideoPicture *video_pic = &(player_ctx->picture_queue[player_ctx->picture_read_index]);
+
+    if (video_pic->bmp && player_ctx->imgCb) {
+        // 如果存在视频帧和回调函数，则调用回调函数显示视频
+        player_ctx->imgCb(video_pic->bmp->data[0], player_ctx->vCodecCtx->width, 
+                          player_ctx->vCodecCtx->height, player_ctx->cbData);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
 FFmpegPlayer::FFmpegPlayer()
 {
 }
