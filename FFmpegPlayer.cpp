@@ -81,6 +81,21 @@ static void video_display(FFmpegPlayerCtx *player_ctx)
     }
 }
 
+static void FN_Audio_Cb(void *userdata, Uint8 *stream, int len)
+{
+    AudioDecodeThread *a_decode_thread = (AudioDecodeThread*)userdata;
+    a_decode_thread->(stream, len);
+}
+
+void stream_seek(FFmpegPlayerCtx *player_ctx, int64_t pos, int rel)
+{
+    if (!player_ctx->seek_require) {
+        player_ctx->seek_pos = pos;
+        player_ctx->seek_flags = rel < 0 ? AVSEEK_FLAG_BACKWARD: 0;
+        player_ctx->seek_flags = 1; // true
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
 FFmpegPlayer::FFmpegPlayer()
