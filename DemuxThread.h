@@ -11,13 +11,15 @@
 
 #include "ThreadBase.h"
 
+struct FFmpegPlayerCtx;
+
 class DemuxThread : ThreadBase
 {
 public:
     DemuxThread();
 
     void setPlayerCtx(FFmpegPlayerCtx *playerCtx) {
-        m_playerCtx = m_playerCtx;
+        m_playerCtx = playerCtx;
     }
 
     int initDemuxThread();
@@ -25,6 +27,11 @@ public:
     void finiDemuxThread();
 
     void run();
+
+private:
+    int decodeLoop();
+    // int audioDecodeFrame();
+    int streamOpen(FFmpegPlayerCtx* playerCtx, int mediaType);
 
 private:
     FFmpegPlayerCtx *m_playerCtx = nullptr;
