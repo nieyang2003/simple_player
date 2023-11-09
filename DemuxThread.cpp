@@ -76,9 +76,9 @@ int DemuxThread::decodeLoop()
 
     while (true)
     {
-        // 是否暂停解码
+        // 是否暂停播放
         if (m_stop) {
-            ff_log_line("request quit while decode_loop");
+            log_println("request quit while decode_loop");
             break;
         }
 
@@ -99,9 +99,8 @@ int DemuxThread::decodeLoop()
             }
 
             if (av_seek_frame(m_playerCtx->formatCtx, stream_index, seek_pos, m_playerCtx->seek_flags) < 0) {
-                ff_log_line("%s: error while seeking\n", m_playerCtx->filename);
-            }
-            else {
+                log_println("%s: error while seeking\n", m_playerCtx->filename);
+            } else {
 				if (m_playerCtx->audioStream >= 0) {
                     m_playerCtx->audio_queue.packetFlush();
                     m_playerCtx->flush_a_ctx = true;
@@ -116,8 +115,42 @@ int DemuxThread::decodeLoop()
         }
 
         // 
+        if (m_playerCtx->audio_queue.packetSize() > MAX_AUDIOQ_SIZE ||
+            m_playerCtx->video_queue.packetSize() > MAX_VIDEOQ_SIZE) {
+            SDL_Delay(10);
+            continue;
+        }
+
+        // 
+        if (av_read_frame(m_playerCtx->formatCtx, packet)) {
+            log_println("av_read_frame error");
+            break;
+        }
+
+        //
+        if (packet->stream_index == m_playerCtx->videoStream) {
+            m_playerCtx->video_queue.packetPut(packet);
+        }
+        else if (packet->stream_index == m_playerCtx->audioStream) {
+            m_playerCtx->audio_queue.packetPut(packet);
+        }
+        else {
+            av_packet_unref(packet);
+        }
 
     }
+
+    while (!m_stop)
+    {
+        SDL_Delay(100);
+    }
+
+    av_packet_free(&packet);
+
+    SDL_Event event;
+    event.type = FF_QUIT_EVENT;
+    event.user.data1 = m_playerCtx;
+    SDL_PushEvent(&event);
 
     return 0;
 }
@@ -156,7 +189,6 @@ int DemuxThread::streamOpen(FFmpegPlayerCtx *playerCtx, int mediaType)
 
     switch (codecCtx->codec_type) {
         case AVMEDIA_TYPE_AUDIO: {
-            /// @todo
             m_playerCtx->audioStream = stream_index;
             m_playerCtx->aCodecCtx = codecCtx;
             m_playerCtx->audio_st = formatCtx->streams[stream_index];

@@ -22,9 +22,12 @@ extern "C" {
 
 #include "PacketQueue.h"
 
-#define MAX_AUDIO_FRAME_SIZE        (1024)
-#define VIDEO_PICTURE_QUEUE_SIZE    (1024)
+#define MAX_AUDIO_FRAME_SIZE        (19200)
+#define VIDEO_PICTURE_QUEUE_SIZE    (1)
 #define MAX_FILE_NAME_LENGTH        (1024)
+
+#define MAX_AUDIOQ_SIZE (5 * 16 * 1024)
+#define MAX_VIDEOQ_SIZE (5 * 256 * 1024)
 
 typedef void (*Image_Cb)(unsigned char* data, int w, int h, void *userdata);
 

@@ -11,21 +11,23 @@
 
 #include "ThreadBase.h"
 
+struct FFmpegPlayerCtx;
+
 class AudioDecodeThread : public ThreadBase
 {
 public:
-    AudioDecodeThread();
+    AudioDecodeThread() {};
 
     void setPlayerCtx(FFmpegPlayerCtx *playerCtx) {
         m_playerCtx = m_playerCtx;
     }
 
-    void getAudioData(unsigned char *stream, int len);
+    void getAudioData(unsigned char *stream, int length);
 
     void run();
 
 private:
-    int audio_decode_frame();
+    int audio_decode_frame(FFmpegPlayerCtx *playerCtx, double *ppts);
 
 private:
     FFmpegPlayerCtx *m_playerCtx = nullptr;
