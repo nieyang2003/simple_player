@@ -51,6 +51,10 @@ int PacketQueue::packetGet(AVPacket *packet, std::atomic<bool> &quit)
     return 0;
 }
 
+/**
+ * @brief 清空队列
+ * 
+ */
 void PacketQueue::packetFlush()
 {
     SDL_LockMutex(m_mutex);

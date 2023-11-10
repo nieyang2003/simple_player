@@ -109,7 +109,8 @@ void FFmpegPlayer::setFilePath(const char *filePath)
 
 void FFmpegPlayer::setImageCb(Image_Cb cb, void *userData)
 {
-
+    m_playerCtx.imgCb = cb;
+    m_playerCtx.cbData = userData;
 }
 
 /**
@@ -119,32 +120,134 @@ void FFmpegPlayer::setImageCb(Image_Cb cb, void *userData)
  */
 int FFmpegPlayer::initPlayer()
 {
+    m_playerCtx.init();
+    strncpy(m_playerCtx->filename, m_filePath, m_filePath.size());
+
+    // 解封装线程
+    m_demuxThread = new DemuxThread;
+    m_demuxThread->setPlayerCtx(m_playerCtx);
+    if (m_demuxThread->initDemuxThread() != 0)
+    {
+        log_println("DemuxThread init Failed.");
+        return -1;
+    }
+
+    // 音频解码线程
+    m_audioDecodeThread = new AudioDecodeThread;
+    m_audioDecodeThread->setPlayerCtx(m_playerCtx);
+
+    // 视频解码线程
+    m_videoDecodeThread = new VideoDecodeThread;
+    m_videoDecodeThread->setPlayerCtx(m_playerCtx);
+
+    // 播放设备参数
+	audio_wanted_spec.freq = 48000;
+	audio_wanted_spec.format = AUDIO_S16SYS;
+	audio_wanted_spec.channels = 2;
+	audio_wanted_spec.silence = 0;
+	audio_wanted_spec.samples = SDL_AUDIO_BUFFER_SIZE;
+	audio_wanted_spec.callback = FN_Audio_Cb;
+	audio_wanted_spec.userdata = m_audioDecodeThread;
+    // 创建音频播放器
+    m_audioPlay = new AudioPlay;
+    if (m_audioPlay->openDevice(&audio_wanted_spec) <= 0)
+    {
+        log_println("open audio device Failed.");
+        return -1;
+    }
+    
+    // 
+    auto refreshEvent = [this](SDL_Event* e) {
+        onRefreshEvent(e);
+    }
+
+	auto keyEvent = [this](SDL_Event* e) {
+		onKeyEvent(e);
+	};
+
+	sdlApp->registerEvent(FF_REFRESH_EVENT, refreshEvent);
+	sdlApp->registerEvent(SDL_KEYDOWN, keyEvent);
+
     return 0;
 }
 
 /**
- * @brief 开始
+ * @brief 开始播放
  * 
  */
 void FFmpegPlayer::start()
 {
+    m_demuxThread->start();
+    m_videoDecodeThread->start();
+    m_audioDecodeThread->start();
+    m_audioPlay->start();
+
+    schedule_refresh(&m_playerCtx, 40);
+
+    m_stop = false;
 }
 
+#define FREE(x) \
+    delete x; \
+    x = nullptr
+
 /**
- * @brief 退出
+ * @brief 退出播放
  * 
  */
 void FFmpegPlayer::stop()
 {
+    m_stop = true;
+
+    // 停止音频解码
+    log_println("audio decode thread clean...");
+    if (m_audioDecodeThread)
+    {
+        m_audioDecodeThread->stop();
+        FREE(m_audioDecodeThread);
+    }
+    log_println("audio decode thread finished.");
+
+    // 停止音频播放线程
+    log_println("audio play thread clean...");
+	if (m_audioPlay) {
+		m_audioPlay->stop();
+		FREE(m_audioPlay);
+	}
+    log_println("audio device finished.");
+
+    // 停止视频解码线程
+    log_println("video decode thread clean...");
+	if (m_videoDecodeThread) {
+		m_videoDecodeThread->stop();
+		FREE(m_videoDecodeThread);
+	}
+    log_println("video decode thread finished.");
+
+    // 停止解封装线程
+    log_println("demux thread clean...");
+	if (m_demuxThread) {
+		m_demuxThread->stop();
+		m_demuxThread->finiDemuxThread();
+		FREE(m_demuxThread);
+	}
+    log_println("demux thread finished.");
+
+    // 释放播放器上下文
+    log_println("player ctx clean...");
+    m_playerCtx.fini();
+    log_println("player ctx finished.");
 }
 
 /**
- * @brief 暂停
+ * @brief 暂停播放
  * 
  * @param state 
  */
 void FFmpegPlayer::pause(PauseState state)
 {
+    m_playerCtx.pause_state = true;
+    m_playerCtx.frame_timer = av_gettime() / 1000000.0;   // 获取当前时间转为秒
 }
 
 /**
@@ -154,6 +257,75 @@ void FFmpegPlayer::pause(PauseState state)
  */
 void FFmpegPlayer::onRefreshEvent(SDL_Event *event)
 {
+    if (m_stop)
+    {
+        return;
+    }
+
+    FFmpegPlayerCtx* p_playerCtx = (FFmpegPlayerCtx*)event->user.data1;
+    VideoPicture* vp;
+    double actual_delay, delay, sync_threshold, ref_clock, diff;
+
+    if (p_playerCtx->video_st)
+    {
+        if (p_playerCtx->picture_size == 0)
+        {
+            schedule_refresh(p_playerCtx, 1);   // 延时1ms
+        }
+        else
+        {
+            vp = p_playerCtx->picture_queue[p_playerCtx->picture_read_index];
+
+            delay = vp->pts - p_playerCtx->frame_last_pts;
+
+            if (delay <= 0 || delay >= 1.0)
+            {
+                delay = p_playerCtx->frame_last_delay;
+            }
+
+            p_playerCtx->frame_last_delay = delay;
+            p_playerCtx->frame_last_pts = vp->pts;
+
+            ref_clock = get_audio_clock(p_playerCtx);
+            diff = vp->pts - ref_clock;
+
+            sync_threshold = (delay > AV_SYNC_THRESHOLD) ? delay : AV_SYNC_THRESHOLD;
+            if (fabs(diff) < AV_NOSYNC_THRESHOLD)
+            {
+                if (diff <= -sync_threshold)
+                {
+                    delay = 0;
+                } else if (diff >= sync_threshold)
+                {
+                    delay *= 2;
+                }
+            }
+
+            p_playerCtx->frame_timer += delay;
+            actual_delay = p_playerCtx->frame_timer - (av_gettime() / 1000000.0);
+            if (actual_delay < 0.010)
+            {
+                actual_delay = 0.010;
+            }
+
+			schedule_refresh(p_playerCtx, (int)(actual_delay * 1000 + 0.5));
+
+			video_display(p_playerCtx);
+
+			if (++p_playerCtx->picture_read_index == VIDEO_PICTURE_QUEUE_SIZE)
+            {
+                p_playerCtx->picture_read_index = 0;
+			}
+			SDL_LockMutex(p_playerCtx->picture_mutex);
+            p_playerCtx->picture_size--;
+			SDL_CondSignal(p_playerCtx->picture_cond);
+			SDL_UnlockMutex(p_playerCtx->picture_mutex);
+        }
+    }
+    else
+    {
+        schedule_refresh(p_playerCtx, 100);
+    }
 }
 
 /**

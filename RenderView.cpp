@@ -79,13 +79,14 @@ void RenderView::updateTexture(RenderItem *item, unsigned char *pixelData, int r
 
     void* pixels = nullptr;
     int pitch;
+    // 锁定纹理，获取内部指针赋给pixels
     SDL_LockTexture(item->texture, NULL, &pixels, &pitch);
-    memcpy(pixels, pixelData, pitch * rows);
+    memcpy(pixels, pixelData, pitch * rows);    // 将像素数据赋给pixels
     SDL_UnlockTexture(item->texture);
 
     std::list<RenderItem*>::iterator iter;
     SDL_RenderClear(m_sdlRender);   // 清除脏数据
-    for (iter = m_items.begin(); iter != m_items.end(); i++) {
+    for (iter = m_items.begin(); iter != m_items.end(); iter++) {
         RenderItem *item = *iter;
         SDL_RenderCopy(m_sdlRender, item->texture, &item->srcRect, &item->destRect);
     }
@@ -93,12 +94,16 @@ void RenderView::updateTexture(RenderItem *item, unsigned char *pixelData, int r
     m_updateMutex.unlock();
 }
 
+/**
+ * @brief 将数据渲染到屏幕上
+ * 
+ */
 void RenderView::onRefresh()
 {
     m_updateMutex.lock();
 
     if (m_sdlRender) {
-        SDL_RenderPresent(m_sdlRender);
+        SDL_RenderPresent(m_sdlRender); // 刷新到屏幕
     }
 
     m_updateMutex.unlock();

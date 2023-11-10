@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
 {
 	if (argc < 2)
 	{
-		log_println(usage: % s media_file_path", ". / ffmpeg_simple_palyer");
+		log_println("usage: %s media_file_path", "./ffmpeg_simple_palyer");
 			return -1;
 	}
 
@@ -71,10 +71,10 @@ int main(int argc, char* argv[])
 	timer.start(&cb, 30);
 
 	RenderPairData *cbData = new RenderPairData;
-	cbData->view = view;
+	cbData->view = &view;
 
 	FFmpegPlayer player;
-	player.setFilePath(arvg[1]);
+	player.setFilePath(argv[1]);
 	player.setImageCb(FN_DecodeImage_Cb, cbData);
 	if (player.initPlayer() != 0) {
 		return -1;

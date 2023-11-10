@@ -1,3 +1,12 @@
+/**
+ * @file FFmpegPlayer.h
+ * @author nieyang (nieyang2003@qq.com)
+ * @brief 
+ * @version 0.1
+ * @date 2023-11-10
+ * 
+ * 
+ */
 #pragma once
 
 #ifdef __cplusplus
@@ -29,6 +38,11 @@ extern "C" {
 #define MAX_AUDIOQ_SIZE (5 * 16 * 1024)
 #define MAX_VIDEOQ_SIZE (5 * 256 * 1024)
 
+#define AV_SYNC_THRESHOLD   (0.01)
+#define AV_NOSYNC_THRESHOLD (10.0)
+
+#define SDL_AUDIO_BUFFER_SIZE (1024)
+
 typedef void (*Image_Cb)(unsigned char* data, int w, int h, void *userdata);
 
 enum PauseState {
@@ -42,7 +56,7 @@ struct VideoPicture {
 };
 
 struct FFmpegPlayerCtx {
-    // ffmpeg播放参数
+    // FFmpeg播放参数
     AVFormatContext     *formatCtx = nullptr;   /**< 多媒体文件格式上下文 */
     AVCodecContext      *aCodecCtx = nullptr;   /**< 音频编解码器上下文 */
     ACCodecContext      *vCodecCtx = nullptr;   /**< 视频编解码器上下文 */ 
@@ -70,7 +84,7 @@ struct FFmpegPlayerCtx {
     int                 seek_flags;
     int64_t             seek_pos;
 
-    // seek操作状态机
+    // 跳转操作状态机
     std::atomic<bool>   flush_a_ctx = false;
     std::atomic<bool>   flush_v_ctx = false;
 
@@ -159,7 +173,7 @@ public:
     void onKeyEvent(SDL_Event *event);
 
 private:
-    FFmpegPlayerCtx playerCtx;
+    FFmpegPlayerCtx m_playerCtx;
     std::string m_filePath;
     SDL_AudioSpec audio_wanted_spec;
     std::atomic<bool> m_stop = false;

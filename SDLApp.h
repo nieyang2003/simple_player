@@ -11,6 +11,10 @@ extern "C" {
 
 #define sdlApp (SDLApp::instance())
 
+/**
+ * @brief SDL事件循环封装
+ * 
+ */
 class SDLApp
 {
 public:

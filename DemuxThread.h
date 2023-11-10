@@ -13,6 +13,10 @@
 
 struct FFmpegPlayerCtx;
 
+/**
+ * @brief 多媒体文件解封装线程
+ * 
+ */
 class DemuxThread : ThreadBase
 {
 public:
